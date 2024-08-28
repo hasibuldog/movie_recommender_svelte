@@ -1,38 +1,56 @@
-# create-svelte
+# Movie Recommendation Service
 
-Everything you need to build a Svelte project, powered by [`create-svelte`](https://github.com/sveltejs/kit/tree/main/packages/create-svelte).
+An end-to-end movie recommendation system built with Svelte, SvelteKit, PostgreSQL, and pgvector.
 
-## Creating a project
+## About Database & Dataset
 
-If you're seeing this, you've probably already done this step. Congrats!
+This project uses a processed version of the latest [MovieLens dataset](https://grouplens.org/datasets/movielens/latest/). The original dataset includes a rich collection of movie ratings and tags from thousands of users. For this project, the data was processed and inserted into a PostgreSQL database, optimized for efficient querying and recommendation generation. To get more details about processing and inserting the data, please refer to [github repo](https://github.com/hasibuldog/movie_recommender).
 
-```bash
-# create a new project in the current directory
-npm create svelte@latest
+## Overview
 
-# create a new project in my-app
-npm create svelte@latest my-app
-```
+This project is a hybrid movie recommendation service that leverages both content-based and collaborative filtering techniques. It utilizes a vector database for efficient similarity searches, providing users with personalized movie suggestions.
 
-## Developing
+## Key Features
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+- Hybrid recommendation system combining content-based and collaborative filtering
+- Vector similarity search powered by pgvector
+- Interactive user interface built with Svelte and SvelteKit
+- Real-time movie search functionality
 
-```bash
-npm run dev
+## Technology Stack
 
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
+- Framework: SvelteKit (full-stack)
+- UI Library: Svelte
+- Server-side Logic: Node.js (via SvelteKit API routes)
+- Database: PostgreSQL with pgvector extension
+- API Integration: TMDB (The Movie Database) for movie details and posters
 
-## Building
+## Getting Started
 
-To create a production version of your app:
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/hasibuldog/movie_recommender_svelte.git
+   cd movie-recommendation-service
+   ```
 
-```bash
-npm run build
-```
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-You can preview the production build with `npm run preview`.
+3. Set up environment variables:
+   Create a `.env` file in the root directory and add the following:
+   ```
+   DB_URL=your_postgres_connection_string
+   TMDB_API_KEY=your_tmdb_api_key
+   ```
 
-> To deploy your app, you may need to install an [adapter](https://kit.svelte.dev/docs/adapters) for your target environment.
+4. Start the development server:
+   ```bash
+   npm run dev
+   ```
+
+5. Open your browser and navigate to `http://localhost:5173` to see the app in action.
+
+## 
+
