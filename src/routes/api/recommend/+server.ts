@@ -12,36 +12,37 @@ function minMaxNormalize(distances: number[]): number[] {
 }
 
 async function getContentBasedRecommendation(movieId: number, k: number) {
-  const embeddings_query = "SELECT embeddings FROM movies_v3 WHERE movieId = $1;";
-  const embeddingResult = await query(embeddings_query, [movieId]);
-  const embedding = embeddingResult.rows[0].embeddings;
-
+  const selfDetailsQuery = "SELECT embeddings, title, embeddings, genres, overview, release_date, runtime, poster_url, vote_average, popularity FROM movies_v5 WHERE movieId = $1;";
+  const selfDetails = await query(selfDetailsQuery, [movieId]);
+  const embedding = selfDetails.rows[0].embeddings;
   const knn_query = `
-    SELECT movieId, tmdbId, title, embeddings <-> $1::vector AS distance
-    FROM movies_v3
+    SELECT movieId, title, genres, poster_url, vote_average, popularity, embeddings <-> $1::vector AS distance
+    FROM movies_v5
     WHERE movieId != $2
     ORDER BY embeddings <-> $1::vector
     LIMIT $3;
   `;
 
-  const result = await query(knn_query, [embedding, movieId, k]);
-  return result.rows;
+  const contentRecs = await query(knn_query, [embedding, movieId, k]);
+  return [contentRecs.rows, selfDetails.rows];
 }
 
 async function getCollaborativeRecommendation(movieId: number, k: number) {
-  const usr_vec_query = "SELECT usr_vec FROM movies_v3 WHERE movieId = $1;";
+  const usr_vec_query = "SELECT usr_vec FROM movies_v5 WHERE movieId = $1;";
   const usrVecResult = await query(usr_vec_query, [movieId]);
   const usrVec = usrVecResult.rows[0].usr_vec;
+  // console.log(usrVec);
 
   const sqlQuery = `
-    SELECT movieId, tmdbId, title, usr_vec <-> $1::vector AS distance
-    FROM movies_v3
+    SELECT movieId, title, genres, poster_url, vote_average, popularity, usr_vec <-> $1::vector AS distance
+    FROM movies_v5
     WHERE movieId != $2
     ORDER BY usr_vec <-> $1::vector
     LIMIT $3;
   `;
 
   const result = await query(sqlQuery, [usrVec, movieId, k]);
+  // console.log(result.rows);
   return result.rows;
 }
 
@@ -69,7 +70,10 @@ function mergeRecommendations(contentRecs: any[], collabRecs: any[], k: number) 
     } else {
       recDict[rec.movieid] = {
         title: rec.title,
-        tmdbid: rec.tmdbid,
+        genres: rec.genres,
+        poster_url: rec.poster_url,
+        vote_average: rec.vote_average,
+        popularity: rec.popularity,
         distance_sum: rec.distance,
         count: 1,
         content_distance: contentRecsNorm.includes(rec) ? rec.distance : null,
@@ -80,8 +84,11 @@ function mergeRecommendations(contentRecs: any[], collabRecs: any[], k: number) 
 
   const mergedRecs = Object.entries(recDict).map(([movieId, data]) => ({
     movieid: parseInt(movieId),
-    tmdbid: data.tmdbid,
     title: data.title,
+    genres: data.genres,
+    poster_url: data.poster_url,
+    vote_average: data.vote_average,
+    popularity: data.popularity,
     avg_distance: data.distance_sum / data.count,
     count: data.count,
     content_distance: data.content_distance,
@@ -93,25 +100,27 @@ function mergeRecommendations(contentRecs: any[], collabRecs: any[], k: number) 
 }
 
 export const POST: RequestHandler = async ({ request }) => {
-  const { movie_id, tmdb_id, title, n_recommendations } = await request.json();
+  const { movie_id, title, n_recommendations } = await request.json();
 
   try {
-    const contentRecs = await getContentBasedRecommendation(movie_id, n_recommendations);
+    const [contentRecs, selfDetails] = await getContentBasedRecommendation(movie_id, n_recommendations);
     const collabRecs = await getCollaborativeRecommendation(movie_id, n_recommendations);
     const mergedRecs = mergeRecommendations(contentRecs, collabRecs, n_recommendations);
 
-    // console.log("collabRecs", collabRecs);
-    // console.log("================================================")
-    // console.log("contentRecs", contentRecs);
-    // console.log("================================================")
-    // console.log("mergedRecs", mergedRecs);
-    // console.log("================================================")
-
+    console.log('=========================contentRecs============================')
+    console.log(contentRecs);
+    console.log('=========================collabRecs============================')
+    console.log(collabRecs);
+    console.log('=========================mergedRecs ============================')
+    console.log(mergedRecs);
+    console.log('=========================selfDetails ============================')
+    console.log(selfDetails);
+    console.log('=====================================================')
     return json({
       recommendations: mergedRecs,
       contentRecs: contentRecs,
       collabRecs: collabRecs,
-      info: [movie_id, tmdb_id, title]
+      selfDetails: selfDetails
     });
   } catch (error) {
     console.error('Error getting recommendations:', error);
