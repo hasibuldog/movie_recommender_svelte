@@ -24,14 +24,29 @@ async function getContentBasedRecommendation(movieId: number, k: number) {
   `;
 
   const contentRecs = await query(knn_query, [embedding, movieId, k]);
-  return [contentRecs.rows, selfDetails.rows];
+  
+  const contentVoteAverage = contentRecs.rows.map((movie: any) => movie.vote_average);
+  const contentPopularity = contentRecs.rows.map((movie: any) => movie.popularity);
+
+  const normContentVoteAverage = minMaxNormalize(contentVoteAverage);
+  const normContentPopularity = minMaxNormalize(contentPopularity);
+
+  const contentRecsWithDoggScore = contentRecs.rows.map((movie: any, index: number) => ({
+    ...movie,
+    norm_vote_average: normContentVoteAverage[index],
+    norm_popularity: normContentPopularity[index],
+    doggscore: normContentVoteAverage[index] * normContentPopularity[index]
+  }));
+
+  contentRecsWithDoggScore.sort((a: any, b: any) => b.doggscore - a.doggscore);
+
+  return [contentRecsWithDoggScore, selfDetails.rows];
 }
 
 async function getCollaborativeRecommendation(movieId: number, k: number) {
   const usr_vec_query = "SELECT usr_vec FROM movies_v5 WHERE movieId = $1;";
   const usrVecResult = await query(usr_vec_query, [movieId]);
   const usrVec = usrVecResult.rows[0].usr_vec;
-  // console.log(usrVec);
 
   const sqlQuery = `
     SELECT movieId, title, genres, poster_url, vote_average, popularity, usr_vec <-> $1::vector AS distance
@@ -41,9 +56,23 @@ async function getCollaborativeRecommendation(movieId: number, k: number) {
     LIMIT $3;
   `;
 
-  const result = await query(sqlQuery, [usrVec, movieId, k]);
-  // console.log(result.rows);
-  return result.rows;
+  const collabRecs = await query(sqlQuery, [usrVec, movieId, k]);
+  const collabVoteAverage = collabRecs.rows.map((vote: any) => vote.vote_average);
+  const collabPopulatity = collabRecs.rows.map((vote: any) => vote.popularity);
+
+  const normCollabVoteAverage = minMaxNormalize(collabVoteAverage);
+  const normCollabPopularity = minMaxNormalize(collabPopulatity);
+
+  const collabRecsWithDoggScore = collabRecs.rows.map((movie: any, index: number) => ({
+    ...movie,
+    norm_vote_average: normCollabVoteAverage[index],
+    norm_popularity: normCollabPopularity[index],
+    doggscore: normCollabVoteAverage[index] * normCollabPopularity[index]
+  }));
+
+  collabRecsWithDoggScore.sort((a: any, b: any) => b.doggscore - a.doggscore);
+
+  return collabRecsWithDoggScore;
 }
 
 function mergeRecommendations(contentRecs: any[], collabRecs: any[], k: number) {
@@ -61,11 +90,14 @@ function mergeRecommendations(contentRecs: any[], collabRecs: any[], k: number) 
     if (recDict[rec.movieid]) {
       recDict[rec.movieid].distance_sum += rec.distance;
       recDict[rec.movieid].count += 1;
+      recDict[rec.movieid].doggscore_sum += rec.doggscore;
       if (contentRecsNorm.includes(rec)) {
         recDict[rec.movieid].content_distance = rec.distance;
+        recDict[rec.movieid].content_doggscore = rec.doggscore;
       }
       if (collabRecsNorm.includes(rec)) {
         recDict[rec.movieid].collaborative_distance = rec.distance;
+        recDict[rec.movieid].collaborative_doggscore = rec.doggscore;
       }
     } else {
       recDict[rec.movieid] = {
@@ -74,10 +106,15 @@ function mergeRecommendations(contentRecs: any[], collabRecs: any[], k: number) 
         poster_url: rec.poster_url,
         vote_average: rec.vote_average,
         popularity: rec.popularity,
+        norm_vote_average: rec.norm_vote_average,
+        norm_popularity: rec.norm_popularity,
         distance_sum: rec.distance,
+        doggscore_sum: rec.doggscore,
         count: 1,
         content_distance: contentRecsNorm.includes(rec) ? rec.distance : null,
-        collaborative_distance: collabRecsNorm.includes(rec) ? rec.distance : null
+        collaborative_distance: collabRecsNorm.includes(rec) ? rec.distance : null,
+        content_doggscore: contentRecsNorm.includes(rec) ? rec.doggscore : null,
+        collaborative_doggscore: collabRecsNorm.includes(rec) ? rec.doggscore : null
       };
     }
   });
@@ -89,13 +126,18 @@ function mergeRecommendations(contentRecs: any[], collabRecs: any[], k: number) 
     poster_url: data.poster_url,
     vote_average: data.vote_average,
     popularity: data.popularity,
+    norm_vote_average: data.norm_vote_average,
+    norm_popularity: data.norm_popularity,
     avg_distance: data.distance_sum / data.count,
+    avg_doggscore: data.doggscore_sum / data.count,
     count: data.count,
     content_distance: data.content_distance,
-    collaborative_distance: data.collaborative_distance
+    collaborative_distance: data.collaborative_distance,
+    content_doggscore: data.content_doggscore,
+    collaborative_doggscore: data.collaborative_doggscore
   }));
 
-  mergedRecs.sort((a, b) => b.count - a.count || a.avg_distance - b.avg_distance);
+  mergedRecs.sort((a, b) => b.avg_doggscore - a.avg_doggscore || b.count - a.count);
   return mergedRecs;
 }
 

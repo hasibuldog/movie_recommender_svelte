@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
     import { onMount } from 'svelte';
     import SearchBar from '$lib/components/SearchBar.svelte';
     import MovieCard from '$lib/components/MovieCard.svelte';
@@ -6,29 +6,41 @@
     const SEARCH_API = '/api/search';
     const RECOMMEND_API_URL = '/api/recommend';
 
-    let searchTerm = '';
-    let searchResults = [];
-    let selectedMovie = null;
-    let searchError = null;
-    let selectedgenres = [];
-    let selectedIndex = -1;
-    let showSearchResults = true;
-    let contentRecs = [];
-    let collabRecs = [];
-    let mergedRecs = [];
-    let selfDetails = [];
+    interface Movie {
+        movieId: string;
+        title: string;
+        genres?: string;
+        poster_url?: string;
+        overview: string;
+        release_date: string;
+        runtime: number;
+        vote_average: number;
+        popularity: number;
+    }
+
+    let searchTerm: string = '';
+    let searchResults: Movie[] = [];
+    let selectedMovie: Movie | null = null;
+    let searchError: string | null = null;
+    let selectedgenres: string[] = [];
+    let selectedIndex: number = -1;
+    let showSearchResults: boolean = true;
+    let contentRecs: Movie[] = [];
+    let collabRecs: Movie[] = [];
+    let mergedRecs: Movie[] = [];
+    let selfDetails: Movie[] = [];
 
     $: if (selectedMovie) {
         selectedgenres = selectedMovie.genres ? selectedMovie.genres.split(' ') : ['N/A'];
     }
 
-    function handleSearch(event) {
+    function handleSearch(event: CustomEvent<string>) {
         searchMovies(event.detail);
         selectedIndex = -1;
         showSearchResults = true;
     }
 
-    function handleMoveSelection(event) {
+    function handleMoveSelection(event: CustomEvent<number>) {
         const direction = event.detail;
         selectedIndex = Math.max(-1, Math.min(searchResults.length - 1, selectedIndex + direction));
     }
@@ -39,25 +51,29 @@
         }
     }
 
-    async function searchMovies(title) {
-        searchError = null;
-        if (title.length > 0) {
-            try {
-                const response = await fetch(`${SEARCH_API}?title=${encodeURIComponent(title)}&limit=10`);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                searchResults = await response.json();
-            } catch (error) {
-                searchError = `Error searching for movies: ${error.message}. Check console for more details.`;
-                searchResults = [];
+    async function searchMovies(title: string) {
+    searchError = null;
+    if (title.length > 0) {
+        try {
+            const response = await fetch(`${SEARCH_API}?title=${encodeURIComponent(title)}&limit=10`);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
-        } else {
+            searchResults = await response.json() as Movie[];
+        } catch (error: unknown) {
+            if (error instanceof Error) {
+                searchError = `Error searching for movies: ${error.message}. Check console for more details.`;
+            } else {
+                searchError = 'An unknown error occurred';
+            }
             searchResults = [];
         }
+    } else {
+        searchResults = [];
     }
+}
 
-    async function handleMovieSelect(movie) {
+    async function handleMovieSelect(movie: Movie) {
         showSearchResults = false;
         searchTerm = movie.title;
         console.log("MOVIE",movie);
@@ -68,18 +84,23 @@
             },
             body: JSON.stringify({
                 movie_id: movie.movieId,
-                n_recommendations: 20,
+                n_recommendations: 40,
             }),
         });
-        const data = await response.json();
+        const data: {
+            recommendations: Movie[];
+            contentRecs: Movie[];
+            collabRecs: Movie[];
+            selfDetails: Movie[];
+        } = await response.json();
         mergedRecs = data.recommendations;
         contentRecs = data.contentRecs;
         collabRecs = data.collabRecs;
-        selfDetails = data.selfDetails[0]; // Assuming there's only one item in selfDetails
-        selectedMovie = selfDetails;
+        selfDetails = data.selfDetails;
+        selectedMovie = selfDetails[0];
     }
 
-    function handleShowResults(event) {
+    function handleShowResults(event: CustomEvent<boolean>) {
         showSearchResults = event.detail;
     }
 </script>
